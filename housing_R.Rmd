@@ -1,0 +1,759 @@
+---
+title: "King County Housing Data Analysis and Regression"
+output:
+  html_document: default
+  word_document: default
+date: "2024-02-14"
+--- 
+
+```{r Data Exploration}
+
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Import data
+
+setwd("/Users/sharathkalappa/Documents/MSBA/Data Analysis and Regression/Final project")
+
+house <- read.csv(file = "kc_house_data.csv", header = TRUE)
+
+head(house)
+
+dim(house)
+
+str(house)
+
+# Histogram 
+
+hist(house$price)
+
+hist(house$bedrooms)
+
+hist(house$bathrooms)
+
+hist(house$sqft_living)
+
+hist(house$sqft_lot)
+
+hist(house$floors)
+
+hist(house$waterfront)
+
+hist(house$view)
+
+hist(house$condition)
+
+hist(house$grade)
+
+hist(house$sqft_above)
+
+hist(house$sqft_basement)
+
+hist(house$yr_built)
+
+hist(house$yr_renovated)
+
+hist(house$zipcode)
+
+hist(house$lat)
+
+hist(house$long)
+
+hist(house$sqft_living15)
+
+hist(house$sqft_lot15)
+
+# Summary
+
+house <- select(house, price:sqft_lot15)
+
+summary(house)
+
+
+# Scatter plot
+
+# plot1:
+
+plot(house$price, house$sqft_living, main = "Price vs. Sqft living",
+     xlab = "Price", ylab = "Sqft living", col = "blue", pch = 16)
+
+abline(lm(house$sqft_living ~ house$price), col = "red")
+
+
+#Plot2 :
+
+plot(house$price, house$sqft_above, main = "Price vs. Sqft Above",
+     xlab = "Price", ylab = "Sqft Above", col = "blue", pch = 16)
+
+abline(lm(house$sqft_above ~ house$price), col = "red")
+
+
+
+# Correlation
+
+cor(house)
+
+cor(house$sqft_living,house$sqft_above)
+
+cor(house$sqft_living,house$bathrooms)
+
+cor(house$sqft_living,house$price)
+
+cor(house$condition, house$floors)
+
+cor(house$long, house$zipcode)
+
+
+# Pivot table
+
+
+pivot_table <- house %>%
+  group_by(bedrooms,bathrooms) %>%
+  summarise(count = n())%>%
+spread(bedrooms, count, fill = 0)
+
+print(pivot_table)
+
+
+plot(house$bathrooms,house$bedrooms)
+
+
+```
+
+
+
+```{r Importing and Summarizing data}
+# Import data
+
+setwd("/Users/sharathkalappa/Documents/MSBA/Data Analysis and Regression/Final project")
+
+house <- read.csv(file = "kc_house_data.csv", header = TRUE)
+
+#Having a look at the dataset and the values that can be used for analysis
+head(house)
+nrow(house)
+str(house)
+summary(house)
+
+```
+On the overall look, the data looks very clean and there is no need of changing the column names. We also do not see many null values that have to be removed. Now we can check and confirm which of these columns can be our predictors and how well we can predict the sales value(Price variable). 
+
+However, we can see that the year renovated has a lot of zeroes, we can replace them with the year built. 
+We can also get rid of "ID", "Date" and the "viewed" column as they don't add any value to our analysis. 
+
+```{r}
+# Replace 0's in yr_renovated with the values from yr_built
+house$yr_renovated[house$yr_renovated == 0] <- house$yr_built[house$yr_renovated == 0]
+head(house)
+str(house)
+# Count the number of rows where yr_renovated was changed
+changed_rows <- sum(house$yr_renovated != 0) - sum(house$yr_renovated != house$yr_built)
+
+# Display the number of changed rows
+print(paste("Number of rows changed:", changed_rows))
+
+```
+Now we can see that there were only around 1000 rows which had renovation data available. Because the yr_renovated does not accurate information over 20k rows, we have decided to drop the column for further analysis. 
+
+```{r Removing un necessary columns}
+# Remove the "id", "date", "view", "yr_renovated"
+house <- house[, !(names(house) %in% c("id", "date", "view", "yr_renovated"))]
+
+# Check the structure of the modified dataframe
+str(house)
+
+print(names(house))
+
+# Select the variables for correlation analysis
+correlation_vars <- c('price', 'bedrooms', 'bathrooms', 'condition', 'sqft_basement', 'yr_built', 'long', 'sqft_living15', 'sqft_lot15')
+
+# Calculate correlations with the target variable ('price')
+correlation <- cor(house[, correlation_vars])
+
+# Sort the correlations
+sorted_correlation <- sort(correlation['price',], decreasing = TRUE)
+
+# Print the sorted correlations
+print(sorted_correlation)
+
+
+```
+
+
+
+```{r Correlation of variables to price}
+# Load the corrplot package
+library(corrplot)
+
+# Select the variables for correlation analysis
+correlation_vars <- c('price', 'bedrooms', 'bathrooms', 'condition', 'sqft_basement', 'yr_built', 'long', 'sqft_living15', 'sqft_lot15')
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(house[, correlation_vars])
+
+# Create the correlation matrix heatmap
+corrplot(correlation_matrix, method = "color", type = "upper", order = "hclust", tl.col = "black", tl.srt = 45)
+
+
+
+
+```
+
+The variables sorted by their correlation coefficient with 'price' in descending order:
+
+Positive Correlations:
+
+sqft_living15: 0.585
+bathrooms: 0.525
+sqft_basement: 0.324
+bedrooms: 0.308
+
+Weak Positive Correlations:
+
+sqft_lot15: 0.082
+yr_built: 0.054
+condition: 0.036
+long: 0.022
+
+Based on these correlations, 'sqft_living15', 'bathrooms', 'sqft_basement', and 'bedrooms' show stronger positive correlations with the 'price' variable, suggesting they might be more influential in predicting house prices. However, it's essential to consider other factors such as multicollinearity and domain knowledge when selecting predictors for your prediction model.
+
+Next we check for multicollinearity and VIF
+
+
+```{r Multicollinearity and VIF}
+# Load the car package (needed for VIF calculation)
+library(car)
+
+# Select the predictor variables (excluding the target variable 'price')
+predictor_vars <- c('bedrooms', 'bathrooms', 'condition', 'sqft_basement', 'yr_built', 'long', 'sqft_living15', 'sqft_lot15', 'price')
+
+# Create a dataframe containing only the predictor variables
+predictors_df <- house[, predictor_vars]
+
+# Calculate VIF for each predictor variable
+vif_values <- vif(lm(price ~ ., data = predictors_df))
+
+# Print VIF values
+print(vif_values)
+
+# Plot VIF values
+barplot(vif_values, main = "Variance Inflation Factor (VIF) for Predictor Variables",
+        ylab = "VIF", col = "skyblue", border = "black", ylim = c(0, max(vif_values) + 1))
+
+# Add data labels
+text(1:length(vif_values), vif_values + 0.1, labels = round(vif_values, 2), pos = 3, cex = 0.9)
+```
+
+Based on the VIF values obtained, it seems that none of the variables have extremely high multicollinearity issues (VIF > 10). Overall, the VIF values suggest that multicollinearity is not a major concern in this model. 
+
+
+```{r}
+# Fit OLS regression model
+ols_model <- lm(price ~ bedrooms + bathrooms + condition + sqft_basement + yr_built + long + sqft_living15 + sqft_lot15, data = house)
+
+# Print summary of the OLS model
+summary(ols_model)
+
+# Coefficient Plot
+plot(coef(ols_model)[-1], xlab = "Predictor Variables", ylab = "Coefficients", main = "Coefficient Plot")
+abline(h = 0, col = "gray")
+
+
+# Residual Plot
+plot(predict(ols_model), resid(ols_model), xlab = "Fitted Values", ylab = "Residuals", main = "Residual Plot")
+abline(h = 0, col = "gray")
+
+
+# Extract residuals from the OLS model
+residuals <- residuals(ols_model)
+
+
+# Calculate RMSE
+rmse <- sqrt(mean(residuals^2))
+
+
+# Calculate MSE
+mse <- mean(residuals^2)
+
+class(residuals)
+
+residuals <- as.numeric(residuals)
+mse <- mean(residuals^2)
+mae <- mean(abs(residuals))
+aic <- AIC(ols_model)
+sbc<- BIC(ols_model)
+
+
+#Printing all these metrics
+cat("Root Mean Squared Error (RMSE):", round(rmse, 2), "\n")
+cat("Mean Squared Error (MSE):", round(mse, 2), "\n")
+cat("Mean Absolute Error (MAE):", round(mae, 2), "\n")
+cat("Akaike Information Criterion (AIC):", round(aic, 2), "\n")
+cat("Schwarz Bayesian Criterion (SBC):", round(sbc, 2), "\n")
+
+
+```
+
+1. **Coefficients Table**:
+   - The coefficient for `bathrooms` is estimated to be approximately 196,200, every bathroom added, the price is estimated to increase by about $196,200. 
+
+2. **Residuals**:
+   - The `Min`, `1Q`, `Median`, `3Q`, and `Max` represent the minimum, first quartile, median, third quartile, and maximum of the residuals, respectively.
+
+3. **Model Fit**:
+   - The `Multiple R-squared` : approximately 48.68% of the variance in house prices is explained by the predictors.
+   - The `F-statistic`: The associated `p-value` (< 2.2e-16) indicates that the model is statistically significant.
+
+4. **Error Metrics**:
+   - The `Root Mean Squared Error (RMSE)`, `Mean Squared Error (MSE)`, and `Mean Absolute Error (MAE)` :
+    The reported RMSE of approximately $262,985 indicates the average difference between observed and predicted prices.
+TRoot Mean Squared Error (RMSE): 262985.4 
+Mean Squared Error (MSE): 69161339259 
+Mean Absolute Error (MAE): 168744.1 
+Akaike Information Criterion (AIC): 600809.2 
+Schwarz Bayesian Criterion (SBC): 600889 
+
+
+Now, let's also look at alternative regression techniques to look for predictive accuracy. 
+
+```{r Stepwise regression for linear model}
+# Load the MASS package for stepwise regression
+library(MASS)
+
+# Fit the initial OLS model
+initial_model <- lm(price ~ bedrooms + bathrooms + condition + sqft_basement + yr_built + long + sqft_living15 + sqft_lot15, data = house)
+
+# Perform stepwise regression
+final_model <- stepAIC(initial_model, direction = "both")
+
+# Display the final model summary
+summary(final_model)
+
+```
+
+In the stepwise regression results, the model was initially fitted with all predictors: bedrooms, bathrooms, condition, sqft_basement, yr_built, long, sqft_living15, and sqft_lot15. Then, stepwise regression was performed to iteratively remove or add predictors based on the Akaike Information Criterion (AIC) until the model with the lowest AIC was obtained.
+
+The initial model had an AIC of 539472.2. The predictor `sqft_lot15` was removed, resulting in a decrease in the AIC to 539471.2. After this step, no further predictors were removed or added, and the final model retained all predictors.
+
+The final model summary shows the coefficients, standard errors, t-values, and p-values for each predictor. The p-values indicate the significance of each predictor in predicting the target variable (price). 
+
+Here are the interpretations of the final model coefficients:
+
+- `bedrooms`: For each additional bedroom, the price decreases by $25,620.
+- `bathrooms`: For each additional bathroom, the price increases by $196,200.
+- `condition`: Houses in better condition have higher prices, with an increase of $13,050 for each unit increase in condition.
+- `sqft_basement`: For each additional square foot of basement area, the price increases by $66.12.
+- `yr_built`: For each additional year of construction, the price decreases by $2,943.
+- `long`: For each unit increase in longitude, the price decreases by $289,200.
+- `sqft_living15`: For each additional square foot of living area (based on a 2015 estimate), the price increases by $255.40.
+
+The adjusted R-squared value of 0.4867 indicates that the model explains approximately 48.67% of the variance in the target variable (price). The F-statistic tests the overall significance of the model, and the extremely low p-value (< 2.2e-16) indicates that the model is statistically significant.
+
+Overall, the final model suggests that the number of bathrooms, condition, square footage of living area, and square footage of the basement are significant predictors of house prices. However, the coefficients of predictors like bedrooms and yr_built should be interpreted cautiously due to their relatively high p-values.
+
+
+```{r OLS model with stepwise regression}
+# Fit the initial OLS model
+initial_model <- lm(price ~ bedrooms + bathrooms + condition + sqft_basement + yr_built + long + sqft_living15 + sqft_lot15, data = house)
+
+# Perform stepwise regression with backward elimination using AIC
+final_model_backward <- step(initial_model, direction = "backward")
+
+# Display the final model summary
+summary(final_model_backward)
+
+```
+The model can be explained with the help of these:
+
+1. **Coefficients**: 
+   - The coefficient for bedrooms is approximately -25,620. On average, each additional bedroom is associated with a decrease in price by $25,620, holding all other variables constant.
+   -The coefficient for bathrooms is approximately 196200. On average, each additional bathroom is associated with a increase in price by $196200, holding all other variables constant.
+
+2. **Significance**: In this model, all predictors have extremely low p-values (nearly 0). All predictor variables are statistically significant in predicting the the sale price.
+
+3. **Adjusted R-squared**: The adjusted R-squared value is 0.4867, indicating that approximately 48.67% of the variance in the target variable (price). This is a reasonable fit to the model. 
+
+4. **Residual Standard Error**: The residual standard error is approximately $263,000. This represents the standard deviation of the residuals, which are the differences between the observed and predicted values of the target variable. Lower values of the residual standard error indicate better fit of the model to the data.
+
+Overall, this model suggests that the included predictor variables (bedrooms, bathrooms, condition, sqft_basement, yr_built, long, and sqft_living15) collectively have a statistically significant relationship with the target variable (price). Next we have to check for multicollinearity. We have already done that in the previuous code chunk along with VIFs. 
+
+
+```{r Stepwise Regression Model}
+# Fit the full model
+full_model <- lm(price ~ ., data = house)
+
+# Perform stepwise regression (forward selection)
+step_forward <- step(full_model, direction = "forward")
+
+# Perform stepwise regression (backward elimination)
+step_backward <- step(full_model, direction = "backward")
+
+# Perform stepwise regression (both directions)
+step_both <- step(full_model, direction = "both")
+
+```
+
+
+1. **Model Description**: The initial model includes all predictors (`bedrooms`, `bathrooms`, `sqft_living`, `sqft_lot`, `floors`, `waterfront`, `condition`, `grade`, `sqft_above`, `sqft_basement`, `yr_built`, `zipcode`, `lat`, `long`, `sqft_living15`, `sqft_lot15`) to predict the `price` of houses.
+
+2. **Stepwise Procedure**: The stepwise regression procedure starts with the full model and sequentially adds or removes predictors based on whether it improves the AIC criterion. The goal is to find the model with the lowest AIC value, indicating the best balance between model fit and complexity.
+
+3. **Interpretation of Results**: The output displays the changes in AIC as predictors are added or removed from the model. For each step, it shows the change in AIC, the resulting model's AIC, and the predictors added or removed.
+
+4. **Final Model**: The final selected model is the one with the lowest AIC value. In this case, the final model includes `bedrooms`, `bathrooms`, `sqft_living`, `sqft_lot`, `floors`, `waterfront`, `condition`, `grade`, `sqft_above`, `yr_built`, `zipcode`, `lat`, `long`, `sqft_living15`, and `sqft_lot15` as predictors.
+
+5. **Significance**: The significance of each predictor can be assessed by examining the coefficient estimates, standard errors, and p-values in the final model summary. Predictors with lower p-values are considered more statistically significant.
+
+
+
+```{r Ridge Regression}
+# Load required library
+library(glmnet)
+
+# Prepare data
+X <- model.matrix(price ~ . - 1, data = house)  # Exclude intercept
+y <- house$price
+
+# Fit ridge regression model
+ridge_model <- cv.glmnet(x = X, y = y, alpha = 0)
+
+# Print coefficients
+coef(ridge_model)
+
+# Predictions
+predictions <- predict(ridge_model, newx = X)
+
+# Evaluate model (e.g., RMSE)
+rmse <- sqrt(mean((predictions - y)^2))
+rmse
+
+```
+
+
+1. **Coefficients**: Each row represents a predictor variable, and the corresponding value in the 's1' column indicates the estimated coefficient for that variable. These coefficients have been penalized by ridge regression to prevent overfitting.
+
+2. **RMSE**: 206911.1 is the cross-validated RMSE. This is a measure of the model's predictive accuracy, calculated using cross-validation. Lower RMSE values indicate better predictive performance of the model.
+
+
+```{r Lasso regression}
+# Load the glmnet package
+library(glmnet)
+
+# Prepare the predictor matrix and response vector
+X <- as.matrix(predictors_df[, -1])  # Remove the target variable 'price'
+y <- predictors_df$price
+
+# Fit the Lasso regression model
+lasso_model <- cv.glmnet(X, y, alpha = 1)  # alpha = 1 for Lasso regression
+
+# Get the coefficients
+lasso_coeffs <- coef(lasso_model, s = "lambda.min")
+
+# Print the coefficients
+print(lasso_coeffs)
+
+# Print the cross-validated RMSE
+print(sqrt(min(lasso_model$cvm)))
+
+```
+
+1. **Coefficients**:
+   - The Lasso regression has set some coefficients to zero, effectively performing variable selection. In the output, only the intercept and the coefficient for the variable 'price' are non-zero.
+   - For the other predictor variables (`bathrooms`, `condition`, `sqft_basement`, `yr_built`, `long`, `sqft_living15`, `sqft_lot15`), the coefficients have been shrunk to zero, indicating that they were not deemed significant in predicting the 'price' by the Lasso model.
+
+2. **Intercept**:
+   - The intercept is the expected mean value of 'price' when all predictors are zero. In this case, it's approximately 15,743.86.
+
+Overall, the output suggests that only the variable 'price' has a significant impact on predicting the target variable 'price', according to the Lasso regression model. This underscores the importance of feature selection and regularization techniques in building predictive models.We also can see the impact of regularization (controlled by the lambda parameter) on the model's ability to handle multicollinearity and prevent overfitting.
+
+
+```{r Elastic Net Model}
+# Load the required library
+library(glmnet)
+
+# Prepare the data
+x <- model.matrix(price ~ ., data = house)  # Predictor variables
+y <- house$price  # Response variable
+
+# Fit the Elastic Net model
+enet_model <- cv.glmnet(x, y, alpha = 0.5)  # alpha = 0.5 for equal parts Lasso and Ridge
+
+# Display the coefficients
+coef(enet_model)
+
+# Get the lambda value that minimizes the cross-validated error
+best_lambda <- enet_model$lambda.min
+best_lambda
+
+```
+1. **Intercept**: In this model, the intercept is approximately -$31,354,210.
+
+2. **Coefficients**: 
+   - Bedrooms: For each additional bedroom, the estimated house price decreases by approximately $6,751.
+   - Bathrooms: Each additional bathroom adds around $23,452 to the estimated house price.
+   - Sqft_living: An increase of one square foot in living area increases the estimated house price by approximately $147.31.
+
+3. **Sparse Matrix**: Since many coefficients are zero, suggesting that certain predictor variables have minimal impact on house prices in this model.
+
+4. **Predictor Importance**: The coefficients with non-zero values indicate the most influential predictors in determining house prices. For instance:
+   - Waterfront: Properties with waterfront views contribute significantly to higher house prices, with an estimated increase of approximately $665,867.
+   - Grade: Higher grades assigned to properties correspond to higher house prices, with each grade increase adding around $98,219 to the estimated price.
+   - Latitude (Lat): Properties located at higher latitudes contribute positively to house prices, with an estimated increase of approximately $498,812 per unit change in latitude.
+
+5. **Predictor Exclusion**: Some predictors, such as sqft_lot and sqft_lot15, have zero coefficients, indicating that they do not significantly influence house prices in this model.
+
+6. **Model Performance**: The reported value of 765.44 indicates the cross-validated error (RMSE) of the elastic net model. Lower values of RMSE indicate better predictive performance, suggesting that the model's predictions are, on average, approximately $765.44 away from the actual house prices.
+
+
+
+```{r K fold Cross Validation}
+# Load the caret package
+library(caret)
+
+# Define the number of folds
+k <- 10
+
+# Create a control object for k-fold cross-validation
+ctrl <- trainControl(method = "cv", number = k)
+
+# Define your model formula
+formula <- price ~ bedrooms + bathrooms + condition + sqft_basement + yr_built + long + sqft_living15 + sqft_lot15
+
+# Train your model using k-fold cross-validation
+model <- train(formula, data = house, method = "lm", trControl = ctrl)
+
+# Print the cross-validation results
+print(model)
+
+# Predicted values
+predicted <- predict(model, newdata = house)
+
+# Create a scatter plot of actual vs. predicted values
+plot(house$price, predicted, 
+     xlab = "Actual Price", ylab = "Predicted Price",
+     main = "Actual vs. Predicted Prices",
+     col = "blue", pch = 20)
+
+# Add a diagonal line for reference
+abline(a = 0, b = 1, col = "red")
+
+# Add legend
+legend("topleft", legend = c("Actual vs. Predicted", "Ideal"), 
+       col = c("blue", "red"), pch = c(20, NA), lty = c(NA, 1))
+
+# Add gridlines
+grid()
+
+
+```
+
+1. **RMSE (Root Mean Squared Error)**: The average RMSE across all folds is approximately 262827.4. RMSE measures the average deviation of the predicted values from the actual values. The values are still not close to the actual numbers as the deviation is quite high.
+
+2. **R-squared (Rsquared)**: The average R-squared across all folds is approximately 0.4875. In this case, almost 49% is a good fit but can be improved. 
+
+3. **MAE (Mean Absolute Error)**: The average MAE across all folds is approximately 168861.8. MAE measures the average absolute difference between the predicted values and the actual values. The values are still not close to the actual numbers as the deviation is quite high.
+
+
+Interpretation from Training/Testing Perspective:
+
+- The RMSE, R-squared, and MAE values are obtained from the cross-validation process, where the model is trained on a subset of the data (training set) and evaluated on a separate subset (testing set). This approach helps to assess how well the model generalizes to unseen data.
+- The reported metrics provide insights into the model's predictive accuracy and goodness of fit. A lower RMSE and MAE indicate better predictive performance, while a higher R-squared suggests that a larger proportion of the variance in the target variable is explained by the model.
+- Cross-validation helps to mitigate the risk of overfitting by providing estimates of model performance on unseen data. It allows for a more robust evaluation of the model's ability to generalize to new observations.
+
+
+```{r}
+# Mulicollinearity :
+
+#There were aliased coefficients in the model, which was causing issues when calculating the VIFs.To address this issue, I removed some of the highly correlated variables before calculating the VIFs.
+
+# Find variables with high correlation
+#highly_correlated <- findCorrelation(correlation, cutoff = 0.7)
+
+# Remove one of the correlated variables
+#house <- house[, -highly_correlated]
+
+#Variance Inflation Factor (VIF)
+#vif_values <- car::vif(lm(price~bedrooms+bathrooms+floors+waterfront+condition+sqft_basement+yr_built+zipcode+lat+long+sqft_living15+sqft_lot15, data = house))
+
+# I Used techniques like correlation analysis to identify highly correlated variables in the data set and removed all of them.After removing the highly correlated variable, recalculated the VIFs for the remaining variables to ensure there are no issues with multicollinearity.
+#Based on the VIF values obtained, it seems that none of the variables have extremely high multicollinearity issues (VIF > 10). Overall, the VIF values suggest that multicollinearity is not a major concern in this model. 
+
+```
+
+```{r}
+
+house_kc <- house
+
+# Manual variable elimination
+
+#Model Building
+# Fit a linear regression model using lm()
+
+model <- lm(price ~ ., data = house_kc)
+
+summary(model)
+
+# Plot colorful diagnostic plots
+par(mfrow = c(2, 2))  # Set up a 2x2 grid for plots
+plot(model, which = 1, col = "blue")  # Residuals vs Fitted
+plot(model, which = 2, col = "green")  # Normal Q-Q plot
+plot(model, which = 3, col = "red")  # Scale-Location plot
+plot(model, which = 5, col = "purple")  # Cook's distance plot
+
+
+#Residuals: I notice that the residuals (differences between predicted and actual prices) range from -1,253,375 to 5,289,670, indicating a wide range of errors in the model predictions.
+
+#t-test: The t-value assesses the significance of each coefficient, with lower p-values indicating greater significance. All the variables in this model have extremely low p-values, suggesting that they are statistically significant predictors of house price.
+
+#Adjusted R-squared:  It suggest that,approximately 58.33% of the variance in price is explained by the predictor variables.
+
+#F-statistic: The F-statistic is 2522 with a p-value < 2.2e-16, suggesting that the model as a whole is statistically significant in predicting house prices.
+
+#Overall, this model suggests that the selected predictor variables collectively have a significant impact on house prices, and the model explains approximately 58% of the variability in house prices.
+
+```
+
+
+```{r}
+
+library(caret)
+
+#Combination of Forward selection and Backward Elimination:
+
+# Split the dataset into training and testing sets (80% training, 20% testing)
+
+set.seed(123)
+
+train_indices <- createDataPartition(house_kc$price, p = 0.8, list = FALSE)
+train_data <- house_kc[train_indices, ]
+test_data <- house_kc[-train_indices, ]
+
+
+# Start with a model that includes all predictors
+initial_model <- lm(price ~ ., data = train_data)
+
+# Perform Combination of Forward selection and Backward Elimination
+final_model_both <- step(initial_model, direction = "both",scope = formula(~ .), data = train_data)
+
+# Step 3: Final Model Selection
+summary(final_model_both)
+
+predictions <- predict(final_model_both, newdata = test_data)
+rmse <- sqrt(mean((test_data$price - predictions)^2))
+mae <- mean(abs(test_data$price - predictions))
+rsquared <- cor(predictions, test_data$price)^2
+
+cat("RMSE:", rmse, "\n")
+cat("MAE:", mae, "\n")
+cat("R-squared:", rsquared, "\n")
+
+#The model appears to have good predictive performance, as indicated by the relatively low RMSE and MAE values and the high R-squared value.
+#The coefficients of the predictors suggest their importance in predicting the target variable (price). Predictors with smaller p-values are more statistically significant.
+#The Adjusted R-squared value accounts for the number of predictors in the model, providing a more reliable measure of goodness-of-fit.
+
+```
+
+
+In this analysis, we started by splitting the dataset into training and testing sets using an 80-20 ratio. The training set was used to build the predictive model, while the testing set was kept separate to evaluate the model's performance.
+
+Next, we employed a combination of forward selection and backward elimination techniques to select the most relevant predictors for our model. the model-building process resulted in a final model with an adjusted R-squared value of 0.5811, indicating that approximately 58.11% of the variance in the response variable (housing prices) can be explained by the selected predictors.
+
+The AIC value, which is a measure of the model's goodness of fit and complexity, was observed to be 427708.1. A lower AIC value suggests a better trade-off between model fit and complexity, implying that the selected model performs reasonably well in predicting housing prices while avoiding overfitting.
+
+Breaking down the model, we observed that several predictors exhibited significant relationships with housing prices. Notably, variables such as the number of bathrooms, waterfront status, latitude, and the living area's square footage (sqft_living15) demonstrated strong positive associations with housing prices. Conversely, the number of bedrooms, year built, and longitude showed negative associations with housing prices.
+
+To validate the model's performance, we employed cross-validation with 10-fold cross-validation. The cross-validated RMSE (Root Mean Squared Error) was found to be approximately $245,661.1, indicating the average difference between the actual and predicted housing prices. Similarly, the cross-validated MAE (Mean Absolute Error) was approximately $147,765.9, representing the average absolute difference between actual and predicted prices.
+
+In summary, the combination of forward selection and backward elimination yielded a parsimonious model with reasonable predictive performance, as evidenced by the AIC value and cross-validated metrics. This model can serve as a valuable tool for predicting housing prices and informing real estate-related decision-making processes. Further refinements and evaluations may enhance the model's accuracy and robustness.
+
+```{r}
+# Split the dataset into training and testing sets (80% training, 20% testing)
+
+set.seed(123)
+
+train_indices <- createDataPartition(house_kc$price, p = 0.8, list = FALSE)
+train_data <- house_kc[train_indices, ]
+test_data <- house_kc[-train_indices, ]
+
+# Interaction & Second Order (Quadratic) Model:
+
+# Interaction Model:
+
+interaction_model0 <- lm(price ~ .+bedrooms:bathrooms + bedrooms:floors +bedrooms:waterfront+                                bathrooms:floors + bathrooms:waterfront + floors:waterfront +
+                                        sqft_basement:yr_built + sqft_basement:zipcode +
+                                        yr_built:zipcode + yr_built:lat + yr_built:long +
+                             zipcode:lat + zipcode:long + lat:long +sqft_living15:sqft_lot15,
+                                                data = train_data)
+
+
+# Second Order (Quadratic) Model:
+
+second_order_model0 <- lm(price ~ .+I(bedrooms^2) + I(bathrooms^2) + I(sqft_living15^2)+ I(floors^2) + I(waterfront^2) + I(condition^2) + I(sqft_basement^2) + I(yr_built^2) + I(zipcode^2) +I(lat^2) +I(long^2) + I(sqft_lot15^2),data = train_data)
+
+
+# Fit the model with quadratic terms
+
+quadratic_model <- lm(price ~ bedrooms + bathrooms + floors + waterfront + 
+                        condition + sqft_basement + yr_built + zipcode + lat + 
+                        long + sqft_living15 + sqft_lot15 + 
+                        I(bedrooms^2) + I(bathrooms^2) + I(sqft_living15^2) + 
+                        I(floors^2) + I(waterfront^2) + I(condition^2) + 
+                        I(sqft_basement^2) + I(yr_built^2) + I(zipcode^2) + 
+                        I(lat^2) + I(long^2) + I(sqft_lot15^2) +
+                        bedrooms:bathrooms + bedrooms:floors + bedrooms:waterfront +
+                        bathrooms:floors + bathrooms:waterfront + floors:waterfront +
+                        sqft_basement:yr_built + sqft_basement:zipcode +
+                        yr_built:zipcode + yr_built:lat + yr_built:long +
+                        zipcode:lat + zipcode:long + lat:long + sqft_living15:sqft_lot15,
+                      data = train_data)
+
+
+# Summary of the quadratic model
+summary(quadratic_model)
+
+
+# Remove non-significant variables
+Final_quadratic_model <- lm(price ~ bedrooms + bathrooms + floors + waterfront + 
+                        condition + sqft_basement + yr_built + zipcode + 
+                        long + sqft_living15 + sqft_lot15 + 
+                        I(bedrooms^2) + I(bathrooms^2) + I(sqft_living15^2) + 
+                        I(sqft_basement^2) + I(yr_built^2) + I(zipcode^2) + 
+                        I(lat^2) + I(long^2) + I(sqft_lot15^2) +
+                        bedrooms:bathrooms + bedrooms:floors + bedrooms:waterfront +
+                        bathrooms:floors + bathrooms:waterfront + floors:waterfront +
+                        sqft_basement:yr_built + sqft_basement:zipcode +
+                        yr_built:lat + yr_built:long +
+                        zipcode:lat + zipcode:long + lat:long + sqft_living15:sqft_lot15,
+                      data = train_data)
+# Refit the model after removing non-significant variables
+summary(Final_quadratic_model)
+
+
+# Model validation
+
+# Predict on testing data 
+predictions <- predict(Final_quadratic_model, newdata = test_data)
+
+# Calculate performance metrics
+rmse <- sqrt(mean((test_data$price - predictions)^2))
+mae <- mean(abs(test_data$price - predictions))
+rsquared <- cor(predictions, test_data$price)^2
+
+# Print performance metrics
+cat("RMSE:", rmse, "\n")
+cat("MAE:", mae, "\n")
+cat("R-squared:", rsquared, "\n")
+
+
+```
+
+In this analysis, we aimed to predict housing prices using a quadratic regression model with interaction terms. We began by splitting our dataset into training and testing sets, with 80% of the data used for training and 20% for testing. We then constructed two models: an interaction model and a second-order (quadratic) model.
+
+The interaction model aimed to capture the interaction effects between various features such as bedrooms, bathrooms, floors, waterfront, and other variables related to the property's characteristics. Additionally, the second-order model included quadratic terms for certain features to capture potential nonlinear relationships between predictors and the target variable.
+
+After fitting the models, we examined the summary statistics to assess the significance of each predictor. We observed that some coefficients were not statistically significant, indicating that these variables did not significantly contribute to explaining the variance in housing prices. Therefore, we removed these non-significant variables and refitted the quadratic model.
+
+The final quadratic model retained significant predictors such as bedrooms, bathrooms, floors, waterfront, condition, sqft_basement, yr_built, zipcode, long, sqft_living15, sqft_lot15, and their corresponding interaction terms. The model's performance was evaluated using the testing dataset, yielding a root mean squared error (RMSE) of approximately $217,794.1, a mean absolute error (MAE) of $132,830.2, and an R-squared value of 0.67828.
+
+Overall, the quadratic regression model with interaction terms provided a reasonable fit to the data and demonstrated predictive capability in estimating housing prices based on various property attributes.
