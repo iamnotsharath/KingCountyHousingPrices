@@ -1,0 +1,482 @@
+---
+title: "Sharath_Capstone_analysis"
+output: html_document
+date: "2024-03-18"
+---
+
+```{r setup, include=FALSE}
+#read the file and explore the data in the file
+county  <- read.csv("/Users/sharathkalappa/Documents/MSBA/Capstone/new_dataset_county.csv")
+nrow(county)
+head(county)
+str(county)
+summary(county$Sale_Price)
+summary(county$Assessed_Value)
+
+```
+We can notice that the 
+
+```{r}
+# Check data types of Assessed.Value and Sale.Amount
+class(county$Assessed.Value)
+class(county$Sale.Amount)
+
+# Generate summary statistics
+summary(county$Assessed.Value)
+summary(county$Sale.Amount)
+
+```
+
+
+```{r}
+```
+
+```{r}
+# Visualize distributions of sale prices and assessed values
+# Create histograms for Assessed.Value and Sale.Amount
+hist(county$Assessed.Value, main = "Histogram of Assessed Value", xlab = "Assessed Value")
+hist(county$Sale.Amount, main = "Histogram of Sale Amount", xlab = "Sale Amount")
+
+
+```
+We can see that there are a lot of scientific values and invalid numbers on our sales amount and assessed values, which cause hindrance in understanding the data further. Hence we need to get rid of the outliers.
+
+```{r}
+# Compute z-scores for Assessed.Value and Sale.Amount
+z_scores_Assessed <- scale(county$Assessed.Value)
+z_scores_Sale <- scale(county$Sale.Amount)
+
+# Define z-score threshold for outlier detection
+z_score_threshold <- 3  #Adjusted as per 3 STD deviations
+
+# Filter data based on z-score threshold
+cleaned_county <- county[abs(z_scores_Assessed) < z_score_threshold & abs(z_scores_Sale) < z_score_threshold, ]
+
+# Filter data based on z-score threshold
+outliers_removed_Assessed <- county$Assessed.Value[abs(z_scores_Assessed) < z_score_threshold]
+outliers_removed_Sale <- county$Sale.Amount[abs(z_scores_Sale) < z_score_threshold]
+
+# Create histograms for data with outliers removed
+hist(outliers_removed_Assessed, 
+     main = "Histogram of Assessed Value (Outliers Removed)", 
+     xlab = "Assessed Value")
+
+hist(outliers_removed_Sale, 
+     main = "Histogram of Sale Amount (Outliers Removed)", 
+     xlab = "Sale Amount")
+
+```
+Now the histograms are a lot more clear. However, it is still extremely right skewed with most of the bins under 500,000 mark. This means that most of our sale amounts were under 500k in connecticuit area which makes it easier for us to focus from investment perspective.
+```{r}
+# Determine the maximum values for Assessed Value and Sale Amount variables
+max_assessed_value <- max(cleaned_county$Assessed.Value)
+max_sale_amount <- max(cleaned_county$Sale.Amount)
+
+# Set breaks to cover the entire range of data plus a buffer
+breaks_assessed <- seq(0, max_assessed_value + 50000, by = 50000)
+breaks_sale <- seq(0, max_sale_amount + 50000, by = 50000)
+
+# Create histograms with adjusted breaks
+hist(cleaned_county$Assessed.Value, 
+     breaks = breaks_assessed,
+     col = rainbow(10),  # Add more colors
+     main = "Histogram of Assessed Value (Smaller Bins)", 
+     xlab = "Assessed Value")
+
+hist(cleaned_county$Sale.Amount, 
+     breaks = breaks_sale,
+     col = rainbow(10),  # Add more colors
+     main = "Histogram of Sale Amount (Smaller Bins)", 
+     xlab = "Sale Amount")
+
+
+```
+Let's understand which of the variables can predict our sales amount well. 
+
+```{r}
+# Load required library
+library(ggplot2)
+
+# Create a scatter plot
+ggplot(cleaned_county, aes(x = Assessed.Value, y = Sale.Amount)) +
+  geom_point() +  # Add points for each data point
+  labs(x = "Assessed Value", y = "Sale Amount", title = "Relationship between Assessed Value and Sale Amount")
+
+```
+
+```{r}
+# Normalize the values using min-max scaling
+min_max_scale <- function(x) {
+  (x - min(x)) / (max(x) - min(x))
+}
+
+# Apply min-max scaling to the Assessed.Value and Sale.Amount variables in cleaned_county dataset
+cleaned_county$Normalized_Assessed <- min_max_scale(cleaned_county$Assessed.Value)
+cleaned_county$Normalized_Sale <- min_max_scale(cleaned_county$Sale.Amount)
+
+# Load required libraries
+library(ggplot2)
+library(dplyr)
+
+# Create a scatter plot with regression line
+ggplot(cleaned_county, aes(x = Assessed.Value, y = Sale.Amount)) +
+  geom_point() +  # Add points for each data point
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +  # Add a regression line
+  labs(x = "Assessed Value", y = "Sale Amount", title = "Scatter Plot with Regression Line")
+
+```
+```{r}
+# Calculate the percentile values for Assessed.Value and Sale.Amount
+percentile_5 <- quantile(county$Assessed.Value, probs = 0.05)
+percentile_95 <- quantile(county$Assessed.Value, probs = 0.95)
+
+# Define the range of percentiles for outliers
+lower_bound <- quantile(county$Assessed.Value, probs = 0.05)
+upper_bound <- quantile(county$Assessed.Value, probs = 0.95)
+
+# Replace outliers with values at specific percentiles
+county$Assessed.Value[county$Assessed.Value < lower_bound] <- percentile_5
+county$Assessed.Value[county$Assessed.Value > upper_bound] <- percentile_95
+
+# Repeat the same process for Sale.Amount
+percentile_5_sale <- quantile(county$Sale.Amount, probs = 0.05)
+percentile_95_sale <- quantile(county$Sale.Amount, probs = 0.95)
+
+lower_bound_sale <- quantile(county$Sale.Amount, probs = 0.05)
+upper_bound_sale <- quantile(county$Sale.Amount, probs = 0.95)
+
+county$Sale.Amount[county$Sale.Amount < lower_bound_sale] <- percentile_5_sale
+county$Sale.Amount[county$Sale.Amount > upper_bound_sale] <- percentile_95_sale
+
+cleaned_county <- county[abs(z_scores_Assessed) < z_score_threshold & abs(z_scores_Sale) < z_score_threshold, ]
+
+# Define acceptable ranges for Assessed.Value and Sale.Amount
+assessed_range <- c(0, 10000000)  # Example range for Assessed.Value (adjust as needed)
+sale_range <- c(0, 10000000)       # Example range for Sale.Amount (adjust as needed)
+
+# Filter out rows with values outside of the acceptable ranges
+county <- cleaned_county[cleaned_county$Assessed.Value >= assessed_range[1] & 
+                 cleaned_county$Assessed.Value <= assessed_range[2] &
+                 cleaned_county$Sale.Amount >= sale_range[1] &
+                 cleaned_county$Sale.Amount <= sale_range[2], ]
+
+
+# Save the cleaned dataset as a CSV file
+write.csv(cleaned_county, file = "cleaned_county.csv", row.names = FALSE)
+
+# Save the cleaned dataset as an RData file
+save(cleaned_county, file = "cleaned_county.RData")
+
+class(cleaned_county)
+
+summary(cleaned_county)
+
+```
+
+We can notice that the fit fo the regression looks good and we can now look at the correlation of the variables
+
+```{r}
+# Calculate the correlation matrix
+correlation_matrix <- cor(cleaned_data[, c("SaleYear", "SaleMonth", "Assessed.Value", "AvgLendingRate", "Pandemic", "Downturn")])
+
+# Print the correlation matrix
+print(correlation_matrix)
+
+# Visualize the correlation matrix using a heatmap
+library(ggplot2)
+library(reshape2)
+
+# Convert correlation matrix to long format
+correlation_long <- melt(correlation_matrix)
+
+# Plot heatmap
+ggplot(correlation_long, aes(Var1, Var2, fill = value)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+                       midpoint = 0, limit = c(-1,1), space = "Lab", 
+                       name="Correlation") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1)) +
+  coord_fixed() +
+  labs(title = "Correlation Heatmap of Variables")
+
+```
+
+
+```{r}
+# Install and load the corrplot package if not already installed
+if (!requireNamespace("corrplot", quietly = TRUE)) {
+  install.packages("corrplot")
+}
+library(corrplot)
+
+# Calculate the correlation matrix
+correlation_matrix <- cor(cleaned_data[, c("SaleYear", "SaleMonth", "Assessed.Value", "AvgLendingRate", "Pandemic", "Downturn")])
+
+# Customize the correlation plot
+corrplot(correlation_matrix, method = "color", type = "upper", 
+         addCoef.col = "black", tl.col = "black", tl.srt = 45, 
+         diag = FALSE)
+
+# Add title
+title(main = "Correlation Matrix of Variables", col.main = "black", cex.main = 1.2)
+
+```
+
+```{r}
+# Calculate the correlation coefficients between Sale.Amount and other variables
+correlation_with_sale <- cor(cleaned_data[c("Sale.Amount", "SaleYear", "SaleMonth", "Assessed.Value", "AvgLendingRate", "Pandemic", "Downturn")])
+
+# Extract the correlation coefficients with Sale.Amount
+correlation_with_sale_amount <- correlation_with_sale["Sale.Amount", -1]
+
+# Sort the correlation coefficients in descending order
+sorted_correlation <- sort(correlation_with_sale_amount, decreasing = TRUE)
+
+# Print the sorted correlation coefficients
+print(sorted_correlation)
+
+```
+
+```{r}
+
+```
+
+
+```{r}
+# Load the necessary libraries
+library(dplyr)
+library(tidyr)
+library(caret)
+
+# Assuming your dataset is stored in a variable called 'data'
+# Clean the data if needed (e.g., remove missing values)
+cleaned_data <- cleaned_county[complete.cases(cleaned_county), ]
+
+
+# Now 'cleaned_data' should contain the cleaned dataset
+# Verify that it's a data frame
+if (!is.data.frame(cleaned_data)) {
+  stop("Cleaned data is not a data frame")
+}
+
+# Split the data into training and testing sets
+set.seed(123)  # For reproducibility
+train_indices <- createDataPartition(cleaned_data$Sale.Amount, p = 0.8, list = FALSE)
+train_data <- cleaned_data[train_indices, ]
+test_data <- cleaned_data[-train_indices, ]
+
+# Create the linear regression model
+lm_model <- lm(Sale.Amount ~ SaleYear + SaleMonth + Assessed.Value + AvgLendingRate + Pandemic + Downturn, data = train_data)
+
+# Summary of the model
+summary(lm_model)
+
+# Make predictions on the test set
+predictions <- predict(lm_model, newdata = test_data)
+
+# Evaluate the model
+RMSE <- sqrt(mean((test_data$Sale.Amount - predictions)^2))
+MAE <- mean(abs(test_data$Sale.Amount - predictions))
+R_squared <- cor(predictions, test_data$Sale.Amount)^2
+
+# Print evaluation metrics
+cat("Root Mean Squared Error (RMSE):", RMSE, "\n")
+cat("Mean Absolute Error (MAE):", MAE, "\n")
+cat("R-squared:", R_squared, "\n")
+```
+
+We can see that like our linear regression model is performing reasonably well, with a high R-squared value and relatively low RMSE and MAE values. 
+
+
+```{r}
+library(ggplot2)
+
+# Combine actual and predicted values into a data frame
+plot_data <- data.frame(
+  Actual = test_data$Sale.Amount,
+  Predicted = predictions
+)
+
+# Create scatter plot with regression line
+ggplot(plot_data, aes(x = Actual, y = Predicted)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  labs(title = "Actual vs. Predicted Sale Amount",
+       x = "Actual Sale Amount",
+       y = "Predicted Sale Amount") +
+  theme_minimal()
+
+```
+Now we can work on refining our model
+
+```{r}
+library(ggplot2)
+
+# Combine actual and predicted values into a data frame
+plot_data <- data.frame(
+  Actual = test_data$Sale.Amount,
+  Predicted = predictions
+)
+
+# Create scatter plot with regression line
+ggplot(plot_data, aes(x = Actual, y = Predicted)) +
+  geom_point(color = "green", alpha = 0.6) +  # Set point color and transparency
+  geom_smooth(method = "lm", se = FALSE, color = "darkred") +  # Set regression line color
+  labs(title = "Actual vs. Predicted Sale Amount",
+       x = "Actual Sale Amount",
+       y = "Predicted Sale Amount") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(color = "darkgreen", size = 16),  # Set title color and size
+    axis.title = element_text(color = "darkblue", size = 14)  # Set axis label color and size
+  )
+
+```
+
+
+```{r}
+summary(lm_model)
+```
+***Coefficients***:
+The coefficients represent the estimated effect of each predictor variable on the sale amount. 
+
+SaleYear: For each additional year, the sale amount increases by approximately $4,969.
+SaleMonth: For each additional month, the sale amount increases by approximately $618.6.
+Assessed.Value: For each unit increase in assessed value, the sale amount increases by approximately $1.359.
+AvgLendingRate: For each unit increase in average lending rate, the sale amount increases by approximately $40,660.
+Pandemic: Presence of a pandemic is associated with an increase of approximately $67,600 in the sale amount.
+Downturn: Presence of an economic downturn is associated with a decrease of approximately $32,020 in the sale amount.
+
+***Significance***
+ The p-values associated with each coefficient indicate the statistical significance of the predictor variables. Variables with low p-values (typically < 0.05) are considered statistically significant. In our model, all predictor variables have very low p-values, indicating that they are statistically significant in predicting the sale amount.
+
+***R-squared*** 
+The R-squared value represents the proportion of variance in the sale amount that is explained by the predictor variables. In your model, the R-squared value is 0.8232, indicating that approximately 82.32% of the variance in the sale amount is explained by the predictor variables.
+
+***Residuals***
+The residuals represent the differences between the observed sale amounts and the sale amounts predicted by the model. The distribution of residuals should ideally be close to normal, with mean zero.
+
+```{r}
+# Create the linear regression model
+lm_model1 <- lm(Sale.Amount ~ Assessed.Value + AvgLendingRate , data = train_data)
+
+# Summary of the model
+summary(lm_model1)
+
+# Make predictions on the test set
+predictions <- predict(lm_model1, newdata = test_data)
+
+# Evaluate the model
+RMSE <- sqrt(mean((test_data$Sale.Amount - predictions)^2))
+MAE <- mean(abs(test_data$Sale.Amount - predictions))
+R_squared <- cor(predictions, test_data$Sale.Amount)^2
+
+```
+```{r}
+
+#
+
+```
+
+
+```{r}
+# Assuming your dataset is stored in a variable called 'data'
+# Clean the data if needed (e.g., remove missing values)
+cleaned_data <- cleaned_county[complete.cases(cleaned_county), ]
+
+
+# Now 'cleaned_data' should contain the cleaned dataset
+# Verify that it's a data frame
+if (!is.data.frame(cleaned_data)) {
+  stop("Cleaned data is not a data frame")
+}
+
+# Changing some categorical variables to factor variables. Add more variables if you need
+cleaned_data$Pandemic <- as.factor(cleaned_data$Pandemic)
+cleaned_data$Downturn <- as.factor(cleaned_data$Downturn)
+str(cleaned_data)
+
+# Split the data into train and test data by 80 and 20 percent 
+set.seed(2127449) # Please make sure to use your DePaul ID as a number
+train_idx <- sample(nrow(cleaned_data),round(.80*nrow(cleaned_data)))
+train <- cleaned_data[train_idx,]
+test  <- cleaned_data[-train_idx,]
+testy <- test$Sale.Amount
+if(!(require(randomForest))) install.packages("randomForest")
+library(randomForest)
+
+
+train$Sale.Amount <- as.numeric(as.character(train$Sale.Amount))
+test$Sale.Amount <- as.numeric(as.character(test$Sale.Amount))
+
+
+# Random Forest Model
+
+rf1 <- randomForest(formula =Sale.Amount ~ SaleYear + SaleMonth + Assessed.Value + AvgLendingRate + Pandemic + Downturn, data = train,ntry=5,ntree=75)
+summary(rf1)
+rfhat1 <- predict(rf1,newdata = test)
+mae <- mean(abs(rfhat1 - test$Sale.Amount)) 
+mse <- mean((rfhat1 - test$Sale.Amount)^2)
+rmse <- sqrt(mse)
+print(paste("MAE:", mae))
+print(paste("MSE:", mse))
+print(paste("RMSE:", rmse))
+## conf_table(rfhat1,testy,"RANDFOREST")
+## auc_plot(rfhat1,testy,"RANDFOREST")
+# Find the best mtry
+
+## oob.values <- vector(length = 15)
+## for (i in 15) {
+##  temp.model <- randomForest(formula = Sale.Amount ~ SaleYear + SaleMonth + Assessed.Value + AvgLendingRate + Pandemic + Downturn, data = train,ntry=3,ntree=150)
+##  oob.values[i] <- temp.model$err.rate[nrow(temp.model$err.rate),1]
+##}
+
+## cbind(1:15,oob.values)
+# We found the mtry = 1
+
+# Find the best ntree
+
+##rf_tree <- randomForest(formula = Sale.Amount ~ SaleYear + SaleMonth + Assessed.Value + AvgLendingRate + Pandemic + Downturn, data = train,ntry=3,ntree=150)
+## trees <- rep(1:nrow(rf_tree$err.rate))
+## Error.rate <- rf_tree$err.rate[,"OOB"]
+## plot(trees,Error.rate,col="red")
+
+# Tree might be 200 or 1000
+
+rf2 <- randomForest(formula = Sale.Amount ~ SaleYear + SaleMonth + Assessed.Value + AvgLendingRate + Pandemic + Downturn, data = train,ntry=5,ntree=100)
+summary(rf2)
+rfhat2 <- predict(rf2,newdata = test)
+mae <- mean(abs(rfhat2 - test$Sale.Amount)) 
+mse <- mean((rfhat2 - test$Sale.Amount)^2)
+rmse <- sqrt(mse)
+print(paste("MAE:", mae))
+print(paste("MSE:", mse))
+print(paste("RMSE:", rmse))
+## conf_table(rfhat2,testy,"RANDFOREST")
+## auc_plot(rfhat2,testy,"RANDFOREST")
+
+rf3 <- randomForest(formula = Sale.Amount ~ SaleYear + SaleMonth + Assessed.Value + AvgLendingRate + Pandemic + Downturn, data = train,ntry=5,ntree=125)
+summary(rf3)
+rfhat3 <- predict(rf3,newdata = test)
+mae <- mean(abs(rfhat3 - test$Sale.Amount)) 
+mse <- mean((rfhat3 - test$Sale.Amount)^2)
+rmse <- sqrt(mse)
+print(paste("MAE:", mae))
+print(paste("MSE:", mse))
+print(paste("RMSE:", rmse))
+## conf_table(rfhat3,testy,"RANDFOREST")
+## auc_plot(rfhat3,testy,"RANDFOREST")
+
+## Summary(rf1)
+## Summary(rf2)
+## Summary(rf3)
+
+# Put all graphs together to compare them
+## par(mfrow=c(2,5))
+## auc_plot(rfhat1,testy,"RANDFOREST")
+## auc_plot(rfhat2,testy,"RANDFOREST")
+## auc_plot(rfhat2,testy,"RANDFOREST")
+## par(mfrow=c(1,1))
+```
+
