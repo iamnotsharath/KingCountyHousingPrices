@@ -14,3 +14,4 @@ information on housing attributes such as number of bedrooms, bathrooms, square 
 location, and other relevant features. This dataset, sourced from Kaggle.com , provides a
 comprehensive and diverse set of variables for analyzing housing prices and understanding the
 underlying factors affecting property values in the region.
+Need to verify which of the predictive model works
