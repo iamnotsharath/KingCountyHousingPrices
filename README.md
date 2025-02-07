@@ -17,4 +17,4 @@ underlying factors affecting property values in the region.
 Need to verify which of the predictive model works
 
 In this project we try to predict the housing prices by experimenting with various probablisitc models
-We have tried to use linear regression model,
+We have tried to use linear regression model, random forest model
